@@ -93,3 +93,19 @@ python -m app.main \
 - Ensure the config sets `app: video_classifier` so `app/scaffold.py` dispatches to the video classifier training loop.
 - Replace CSV and `pretrain_checkpoint` paths with your data/checkpoints.
 - Set `finetune_encoder: true` in the config to train the encoder; otherwise only the classifier is updated.【F:app/video_classifier/train.py†L59-L149】
+
+### DeepSpeed launch (standalone entrypoint)
+`app/video_classifier/deepspeed_train.py` mirrors the standard training flow but initializes DeepSpeed directly (no `app/main.py` dependency) and defaults to ZeRO stage 2. It reads the same `video-classifier.yaml` config.
+
+```bash
+# Single-node example (4 GPUs):
+deepspeed --num_gpus=4 app/video_classifier/deepspeed_train.py \
+  --config app/video_classifier/video-classifier.yaml \
+  --deepspeed-stage 2 \
+  --grad-accum-steps 1
+```
+
+Notes:
+- Adjust `--grad-accum-steps` to control effective batch size (`train_batch_size = micro_batch * GPUs * grad_accum_steps`).
+- Checkpointing/logging follow the same folder paths as `train.py` (`latest.pt`, `log_r{rank}.csv`).
+- Pretraining/finetuning flags (e.g., `meta.pretrain_checkpoint`, `meta.finetune_encoder`) are read from the YAML. 【F:app/video_classifier/deepspeed_train.py†L191-L505】【F:app/video_classifier/deepspeed_train.py†L541-L714】
