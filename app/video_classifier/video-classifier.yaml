@@ -1,0 +1,72 @@
+app: video_classifier
+cpus_per_task: 12
+folder: /DATA_A/NAS/models/test
+mem_per_gpu: 30G
+nodes: 1
+tasks_per_node: 4
+data:
+    batch_size: 4
+    crop_size: 224
+    datasets:
+        # CSV file where each row is "path/to/video.mp4 <label_id>"
+        - /DATA_A/NAS/corpus/clips_training_data/corpus_train.csv
+    dataset_fpcs:
+        - 64
+    val_datasets:
+        # Optional validation CSV; set to null or remove to disable evaluation
+        - /DATA_A/NAS/corpus/clips_training_data/corpus_eval.csv
+    val_dataset_fpcs:
+        - 64
+    fps: 5
+    frame_step: 4
+    num_clips: 1
+    val_num_clips: 1
+    num_workers: 8
+    val_num_workers: 8
+    patch_size: 16
+    pin_mem: true
+    val_batch_size: 4
+    val_random_clip_sampling: false
+    tubelet_size: 2
+data_aug:
+    auto_augment: true
+    horizontal_flip: true
+    motion_shift: false
+    random_resize_aspect_ratio:
+        - 0.75
+        - 1.3333
+    random_resize_scale:
+        - 0.5
+        - 1.0
+    reprob: 0.0
+meta:
+    dtype: bfloat16
+    load_checkpoint: false
+    load_encoder: true
+    finetune_encoder: false
+    num_classes: 12
+    pretrain_checkpoint: /DATA_B/workspaces/vjepa2/vitl/vitl.pt
+    read_checkpoint: null
+    save_every_freq: 100
+    seed: 0
+    use_sdpa: true
+model:
+    compile_model: false
+    model_name: vit_large_rope
+    attn_pooler_depth: 4
+    attn_pooler_heads: 12
+    uniform_power: true
+    use_activation_checkpointing: false
+    use_rope: true
+    use_silu: false
+    wide_silu: true
+optimization:
+    anneal: 20
+    epochs: 200
+    final_lr: 0.0
+    final_weight_decay: 0.04
+    ipe: null
+    lr: 0.00025
+    start_lr: 0.00005
+    warmup: 5
+    weight_decay: 0.04
