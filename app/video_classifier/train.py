@@ -347,7 +347,8 @@ def main(args, resume_preempt=False):
         betas=betas,
         eps=eps,
     )
-    encoder = DistributedDataParallel(encoder, static_graph=True)
+    if finetune_encoder:
+        encoder = DistributedDataParallel(encoder, static_graph=True)
     classifier = DistributedDataParallel(classifier, static_graph=True)
 
     # -- load pretrained weights
