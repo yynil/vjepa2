@@ -51,6 +51,33 @@ def _default_video_collator(batch):
     return video_tensor, labels, clip_indices
 
 
+def _ensure_nccl_p2p_compatible():
+    """Disable NCCL P2P if any visible GPU pair lacks peer access."""
+    if not torch.cuda.is_available():
+        return
+
+    visible_devices = os.environ.get("CUDA_VISIBLE_DEVICES")
+    if visible_devices is None:
+        device_ids = list(range(torch.cuda.device_count()))
+    else:
+        try:
+            device_ids = [int(d.strip()) for d in visible_devices.split(",")]
+        except ValueError:
+            # Fall back to the number of visible devices if parsing fails.
+            device_ids = list(range(torch.cuda.device_count()))
+
+    for i, src in enumerate(device_ids):
+        for dst in device_ids[i + 1 :]:
+            if (not torch.cuda.can_device_access_peer(src, dst)) or (not torch.cuda.can_device_access_peer(dst, src)):
+                if os.environ.get("NCCL_P2P_DISABLE") != "1":
+                    logger.warning(
+                        "Disabling NCCL P2P because peer access is not available between visible devices "
+                        f"{src} and {dst}."
+                    )
+                    os.environ["NCCL_P2P_DISABLE"] = "1"
+                return
+
+
 def main(args, resume_preempt=False):
     # ----------------------------------------------------------------------- #
     #  PASSED IN PARAMS FROM CONFIG FILE
@@ -187,6 +214,8 @@ def main(args, resume_preempt=False):
         mp.set_start_method("spawn")
     except Exception:
         pass
+
+    _ensure_nccl_p2p_compatible()
 
     # -- init torch distributed backend
     world_size, rank = init_distributed()
