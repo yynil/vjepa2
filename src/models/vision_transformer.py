@@ -374,6 +374,7 @@ def vit_base(patch_size=16, **kwargs):
 
 
 def vit_large_rope(patch_size=16, **kwargs):
+    use_rope = kwargs.pop("use_rope", True)
     model = VisionTransformer(
         patch_size=patch_size,
         embed_dim=1024,
@@ -381,7 +382,7 @@ def vit_large_rope(patch_size=16, **kwargs):
         num_heads=16,
         mlp_ratio=4,
         qkv_bias=True,
-        use_rope=True,
+        use_rope=use_rope,
         norm_layer=partial(nn.LayerNorm, eps=1e-6),
         **kwargs
     )
@@ -389,6 +390,7 @@ def vit_large_rope(patch_size=16, **kwargs):
 
 
 def vit_huge_rope(patch_size=16, **kwargs):
+    use_rope = kwargs.pop("use_rope", True)
     model = VisionTransformer(
         patch_size=patch_size,
         embed_dim=1280,
@@ -396,7 +398,7 @@ def vit_huge_rope(patch_size=16, **kwargs):
         num_heads=16,
         mlp_ratio=4,
         qkv_bias=True,
-        use_rope=True,
+        use_rope=use_rope,
         norm_layer=partial(nn.LayerNorm, eps=1e-6),
         **kwargs
     )
@@ -418,6 +420,7 @@ def vit_giant(patch_size=16, **kwargs):
 
 
 def vit_giant_rope(patch_size=16, **kwargs):
+    use_rope = kwargs.pop("use_rope", True)
     model = VisionTransformer(
         patch_size=patch_size,
         embed_dim=1408,
@@ -425,7 +428,7 @@ def vit_giant_rope(patch_size=16, **kwargs):
         num_heads=16,
         mlp_ratio=48 / 11,
         qkv_bias=True,
-        use_rope=True,
+        use_rope=use_rope,
         norm_layer=partial(nn.LayerNorm, eps=1e-6),
         **kwargs
     )
@@ -433,6 +436,7 @@ def vit_giant_rope(patch_size=16, **kwargs):
 
 
 def vit_giant_xformers_rope(patch_size=16, **kwargs):
+    use_rope = kwargs.pop("use_rope", True)
     model = VisionTransformer(
         patch_size=patch_size,
         embed_dim=1408,
@@ -440,7 +444,7 @@ def vit_giant_xformers_rope(patch_size=16, **kwargs):
         num_heads=22,
         mlp_ratio=48 / 11,
         qkv_bias=True,
-        use_rope=True,
+        use_rope=use_rope,
         norm_layer=partial(nn.LayerNorm, eps=1e-6),
         **kwargs
     )
