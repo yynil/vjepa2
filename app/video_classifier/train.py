@@ -98,6 +98,25 @@ def main(args, resume_preempt=False):
 
     # -- DATA
     cfgs_data = args.get("data")
+
+    def _resolve_frame_sampling(name, fps, duration, frame_step, default_frame_step=4):
+        """Ensure exactly one of fps, duration, or frame_step is set for a loader."""
+
+        specified = [v is not None for v in (fps, duration, frame_step)]
+        if sum(specified) > 1:
+            logger.warning(
+                f"Multiple sampling options set for {name}; prioritizing in order fps > duration > frame_step: "
+                f"fps={fps}, duration={duration}, frame_step={frame_step}."
+            )
+        if fps is not None:
+            duration = None
+            frame_step = None
+        elif duration is not None:
+            frame_step = None
+        elif frame_step is None:
+            frame_step = default_frame_step
+        return fps, duration, frame_step
+
     dataset_paths = cfgs_data.get("datasets", [])
     datasets_weights = cfgs_data.get("datasets_weights")
     dataset_fpcs = cfgs_data.get("dataset_fpcs")
@@ -107,12 +126,14 @@ def main(args, resume_preempt=False):
     batch_size = cfgs_data.get("batch_size")
     tubelet_size = cfgs_data.get("tubelet_size")
     fps = cfgs_data.get("fps")
+    duration = cfgs_data.get("duration")
     crop_size = cfgs_data.get("crop_size", 224)
     patch_size = cfgs_data.get("patch_size")
     pin_mem = cfgs_data.get("pin_mem", False)
     num_workers = cfgs_data.get("num_workers", 1)
     persistent_workers = cfgs_data.get("persistent_workers", True)
-    frame_step = cfgs_data.get("frame_step", 4)
+    frame_step = cfgs_data.get("frame_step")
+    fps, duration, frame_step = _resolve_frame_sampling("training", fps, duration, frame_step, default_frame_step=4)
     num_clips = cfgs_data.get("num_clips", 1)
     val_dataset_paths = cfgs_data.get("val_datasets")
     val_dataset_fpcs = cfgs_data.get("val_dataset_fpcs", dataset_fpcs)
@@ -121,7 +142,16 @@ def main(args, resume_preempt=False):
     val_batch_size = cfgs_data.get("val_batch_size", batch_size)
     val_num_workers = cfgs_data.get("val_num_workers", num_workers)
     val_persistent_workers = cfgs_data.get("val_persistent_workers", persistent_workers)
-    val_frame_step = cfgs_data.get("val_frame_step", frame_step)
+    val_fps = cfgs_data.get("val_fps", fps)
+    val_duration = cfgs_data.get("val_duration")
+    val_frame_step = cfgs_data.get("val_frame_step")
+    val_fps, val_duration, val_frame_step = _resolve_frame_sampling(
+        "validation",
+        val_fps,
+        val_duration,
+        val_frame_step,
+        default_frame_step=frame_step if frame_step is not None else 4,
+    )
     val_num_clips = cfgs_data.get("val_num_clips", num_clips)
     val_random_clip_sampling = cfgs_data.get("val_random_clip_sampling", False)
 
@@ -254,6 +284,7 @@ def main(args, resume_preempt=False):
         frame_sample_rate=frame_step,
         clip_len=max_num_frames,
         fps=fps,
+        duration=duration,
         dataset_fpcs=dataset_fpcs,
         num_clips=num_clips,
         random_clip_sampling=True,
@@ -278,7 +309,8 @@ def main(args, resume_preempt=False):
             root_path=val_dataset_paths,
             frame_sample_rate=val_frame_step,
             clip_len=eval_max_num_frames,
-            fps=fps,
+            fps=val_fps,
+            duration=val_duration,
             dataset_fpcs=val_dataset_fpcs,
             num_clips=val_num_clips,
             random_clip_sampling=val_random_clip_sampling,
