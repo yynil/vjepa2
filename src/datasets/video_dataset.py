@@ -46,6 +46,7 @@ def make_videodataset(
     pin_mem=True,
     persistent_workers=True,
     deterministic=True,
+    shuffle=True,
     log_dir=None,
 ):
     dataset = VideoDataset(
@@ -79,10 +80,12 @@ def make_videodataset(
 
     logger.info("VideoDataset dataset created")
     if datasets_weights is not None:
-        dist_sampler = DistributedWeightedSampler(dataset, num_replicas=world_size, rank=rank, shuffle=True)
+        dist_sampler = DistributedWeightedSampler(
+            dataset, num_replicas=world_size, rank=rank, shuffle=shuffle, drop_last=drop_last
+        )
     else:
         dist_sampler = torch.utils.data.distributed.DistributedSampler(
-            dataset, num_replicas=world_size, rank=rank, shuffle=True
+            dataset, num_replicas=world_size, rank=rank, shuffle=shuffle, drop_last=drop_last
         )
 
     if deterministic:

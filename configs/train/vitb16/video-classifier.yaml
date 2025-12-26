@@ -12,12 +12,21 @@ data:
     - /path/to/your/train.csv
   dataset_fpcs:
   - 8
+  val_datasets:
+    # Optional validation CSV; set to null or remove to disable evaluation
+    - /path/to/your/val.csv
+  val_dataset_fpcs:
+  - 8
   fps: 5
   frame_step: 4
   num_clips: 1
+  val_num_clips: 1
   num_workers: 8
+  val_num_workers: 8
   patch_size: 16
   pin_mem: true
+  val_batch_size: 16
+  val_random_clip_sampling: false
   tubelet_size: 2
 data_aug:
   auto_augment: false

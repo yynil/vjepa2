@@ -114,6 +114,16 @@ def main(args, resume_preempt=False):
     persistent_workers = cfgs_data.get("persistent_workers", True)
     frame_step = cfgs_data.get("frame_step", 4)
     num_clips = cfgs_data.get("num_clips", 1)
+    val_dataset_paths = cfgs_data.get("val_datasets")
+    val_dataset_fpcs = cfgs_data.get("val_dataset_fpcs", dataset_fpcs)
+    val_datasets_weights = cfgs_data.get("val_datasets_weights")
+    eval_max_num_frames = max(val_dataset_fpcs) if val_dataset_fpcs is not None else max_num_frames
+    val_batch_size = cfgs_data.get("val_batch_size", batch_size)
+    val_num_workers = cfgs_data.get("val_num_workers", num_workers)
+    val_persistent_workers = cfgs_data.get("val_persistent_workers", persistent_workers)
+    val_frame_step = cfgs_data.get("val_frame_step", frame_step)
+    val_num_clips = cfgs_data.get("val_num_clips", num_clips)
+    val_random_clip_sampling = cfgs_data.get("val_random_clip_sampling", False)
 
     # -- DATA AUGS
     cfgs_data_aug = args.get("data_aug")
@@ -223,8 +233,21 @@ def main(args, resume_preempt=False):
         motion_shift=motion_shift,
         crop_size=crop_size,
     )
+    eval_transform = None
+    if val_dataset_paths:
+        eval_transform = make_transforms(
+            random_horizontal_flip=False,
+            random_resize_aspect_ratio=ar_range,
+            random_resize_scale=rr_scale,
+            reprob=0.0,
+            auto_augment=False,
+            motion_shift=False,
+            crop_size=crop_size,
+        )
 
     # -- init data-loaders/samplers
+    val_loader = None
+    val_sampler = None
     (train_loader, train_sampler) = init_data(
         data="videodataset",
         root_path=dataset_paths,
@@ -249,6 +272,30 @@ def main(args, resume_preempt=False):
     if ipe is None:
         ipe = _dlen
     logger.info(f"iterations per epoch/dataset length: {ipe}/{_dlen}")
+    if val_dataset_paths:
+        (val_loader, val_sampler) = init_data(
+            data="videodataset",
+            root_path=val_dataset_paths,
+            frame_sample_rate=val_frame_step,
+            clip_len=eval_max_num_frames,
+            fps=fps,
+            dataset_fpcs=val_dataset_fpcs,
+            num_clips=val_num_clips,
+            random_clip_sampling=val_random_clip_sampling,
+            allow_clip_overlap=False,
+            batch_size=val_batch_size,
+            transform=eval_transform if eval_transform is not None else transform,
+            collator=video_collator,
+            num_workers=val_num_workers,
+            world_size=world_size,
+            pin_mem=pin_mem,
+            persistent_workers=val_persistent_workers,
+            rank=rank,
+            datasets_weights=val_datasets_weights,
+            training=False,
+            drop_last=False,
+        )
+        logger.info(f"Validation loader initialized with length {len(val_loader)}")
 
     # -- init optimizer and scheduler
     optimizer, scaler, scheduler, wd_scheduler = init_opt(
@@ -330,6 +377,61 @@ def main(args, resume_preempt=False):
         gc.disable()
         gc.collect()
 
+    def _predict_logits(videos):
+        bsz, n_clips = videos.shape[:2]
+        flat_videos = videos.view(-1, *videos.shape[2:])
+        tokens = encoder(flat_videos)
+        logits = classifier(tokens)
+        logits = logits.view(bsz, n_clips, -1).mean(dim=1)
+        return logits
+
+    def evaluate(epoch):
+        if val_loader is None:
+            return None
+
+        encoder.eval()
+        classifier.eval()
+
+        loss_meter = AverageMeter()
+        acc1_meter = AverageMeter()
+        acc5_meter = AverageMeter()
+
+        if val_sampler is not None:
+            val_sampler.set_epoch(epoch)
+
+        with torch.inference_mode():
+            for sample in val_loader:
+                videos = sample[0].to(device, non_blocking=True)
+                labels = sample[1].to(device, dtype=torch.long)
+                with torch.cuda.amp.autocast(dtype=dtype, enabled=mixed_precision):
+                    logits = _predict_logits(videos)
+                    loss = F.cross_entropy(logits, labels)
+
+                maxk = min(5, num_classes)
+                _, pred = logits.topk(maxk, 1, True, True)
+                correct = pred.eq(labels.view(-1, 1).expand_as(pred))
+                acc1 = correct[:, :1].reshape(-1).float().mean().item()
+                acc5 = correct[:, :maxk].reshape(-1).float().mean().item()
+
+                loss_meter.update(float(loss))
+                acc1_meter.update(acc1)
+                acc5_meter.update(acc5)
+
+        if rank == 0:
+            logger.info(
+                "[Eval][%d] loss: %.3f [acc@1: %.3f acc@5: %.3f]"
+                % (epoch + 1, loss_meter.avg, acc1_meter.avg, acc5_meter.avg)
+            )
+
+        encoder.train()
+        classifier.train()
+
+        return loss_meter.avg, acc1_meter.avg, acc5_meter.avg
+
+    if num_epochs == 0 and val_loader is not None:
+        evaluate(start_epoch)
+        return
+
     # -- TRAINING LOOP
     for epoch in range(start_epoch, num_epochs):
         logger.info("Epoch %d" % (epoch + 1))
@@ -379,14 +481,6 @@ def main(args, resume_preempt=False):
             def train_step():
                 _new_lr = scheduler.step()
                 _new_wd = wd_scheduler.step()
-
-                def _predict_logits(videos):
-                    bsz, n_clips = videos.shape[:2]
-                    flat_videos = videos.view(-1, *videos.shape[2:])
-                    tokens = encoder(flat_videos)
-                    logits = classifier(tokens)
-                    logits = logits.view(bsz, n_clips, -1).mean(dim=1)
-                    return logits
 
                 with torch.cuda.amp.autocast(dtype=dtype, enabled=mixed_precision):
                     logits = _predict_logits(videos)
@@ -480,3 +574,6 @@ def main(args, resume_preempt=False):
                 save_every_file = f"e{epoch}.pt"
                 save_every_path = os.path.join(folder, save_every_file)
                 save_checkpoint(epoch + 1, save_every_path)
+
+        if val_loader is not None:
+            evaluate(epoch)

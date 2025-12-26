@@ -70,7 +70,7 @@ def init_data(
             duration=duration,
             fps=fps,
             num_clips=num_clips,
-            random_clip_sampling=random_clip_sampling,
+            random_clip_sampling=random_clip_sampling if training else False,
             allow_clip_overlap=allow_clip_overlap,
             filter_short_videos=filter_short_videos,
             filter_long_videos=filter_long_videos,
@@ -83,7 +83,9 @@ def init_data(
             persistent_workers=persistent_workers,
             world_size=world_size,
             rank=rank,
-            deterministic=deterministic,
+            deterministic=deterministic if training else True,
+            drop_last=drop_last and training,
+            shuffle=training,
             log_dir=log_dir,
         )
 
