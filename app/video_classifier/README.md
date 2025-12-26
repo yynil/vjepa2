@@ -55,11 +55,11 @@ classifier = AttentiveClassifier(
 
 ```mermaid
 "graph TD
-    V[Video clips] --> P[PatchEmbed3D]
-    P --> E[VisionTransformer Encoder]
-    E --> AP[AttentivePooler]
-    AP --> H[Linear Head]
-    E --> CF[Clip fusion (mean logits)]
+    V["Video clips"] --> P["PatchEmbed3D"]
+    P --> E["VisionTransformer Encoder"]
+    E --> AP["AttentivePooler"]
+    AP --> H["Linear Head"]
+    E --> CF["Clip fusion (mean logits)"]
     CF --> H
 "
 ```
