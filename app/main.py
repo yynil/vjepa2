@@ -32,6 +32,26 @@ parser.add_argument(
 )
 
 
+def _disable_nccl_p2p_if_needed(devices):
+    """Disable NCCL P2P if any chosen device pair lacks peer access."""
+    import torch
+
+    if not torch.cuda.is_available():
+        return
+
+    try:
+        device_ids = [int(d.split(":")[-1]) for d in devices]
+    except Exception:
+        return
+
+    for i, src in enumerate(device_ids):
+        for dst in device_ids[i + 1 :]:
+            if (not torch.cuda.can_device_access_peer(src, dst)) or (not torch.cuda.can_device_access_peer(dst, src)):
+                if os.environ.get("NCCL_P2P_DISABLE") != "1":
+                    os.environ["NCCL_P2P_DISABLE"] = "1"
+                return
+
+
 def process_main(rank, fname, world_size, devices):
     import os
 
@@ -79,6 +99,7 @@ if __name__ == "__main__":
         process_main(rank=0, fname=args.fname, world_size=1, devices=["cuda:0"])
     else:
         num_gpus = len(args.devices)
+        _disable_nccl_p2p_if_needed(args.devices)
         mp.set_start_method("spawn")
         for rank in range(num_gpus):
             mp.Process(target=process_main, args=(rank, args.fname, num_gpus, args.devices)).start()
