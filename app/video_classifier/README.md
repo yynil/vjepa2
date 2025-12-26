@@ -86,10 +86,10 @@ optimizer.step()
 
 ## Example launch
 ```bash
-python -m torch.distributed.launch --nproc_per_node=<gpus> \
-    app/video_classifier/train.py \
-    --cfg configs/train/vitb16/video-classifier.yaml \
-    --folder /your_folder/video_classifier/vitb16-224px-8f
+python -m app.main \
+    --fname configs/train/vitb16/video-classifier.yaml \
+    --devices cuda:0 cuda:1
 ```
+- Ensure the config sets `app: video_classifier` so `app/scaffold.py` dispatches to the video classifier training loop.
 - Replace CSV and `pretrain_checkpoint` paths with your data/checkpoints.
 - Set `finetune_encoder: true` in the config to train the encoder; otherwise only the classifier is updated.【F:app/video_classifier/train.py†L59-L149】
