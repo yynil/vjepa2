@@ -6,6 +6,7 @@ import time
 from pathlib import Path
 
 import deepspeed
+from deepspeed.ops.adam import DeepSpeedCPUAdam
 import numpy as np
 import torch
 import torch.nn as nn
@@ -114,6 +115,7 @@ def _build_deepspeed_config(
     dtype: torch.dtype,
     stage: int,
     grad_accum_steps: int,
+    offload_cpu: bool,
 ) -> dict:
     config = {
         "train_batch_size": batch_size_per_gpu * world_size * grad_accum_steps,
@@ -129,6 +131,9 @@ def _build_deepspeed_config(
         "wall_clock_breakdown": False,
     }
 
+    if offload_cpu:
+        config["zero_optimization"]["offload_optimizer"] = {"device": "cpu", "pin_memory": True}
+
     if dtype == torch.bfloat16:
         config["bf16"] = {"enabled": True}
     elif dtype == torch.float16:
@@ -140,7 +145,7 @@ def _build_deepspeed_config(
 def _init_optimizer(
     model: nn.Module,
     optimizer_cfg: dict,
-    use_mixed_precision: bool,
+    offload_cpu: bool,
 ):
     params = []
     encoder, classifier = model.encoder, model.classifier
@@ -159,7 +164,11 @@ def _init_optimizer(
         ]
     )
 
-    optimizer = torch.optim.AdamW(params, betas=optimizer_cfg.get("betas", (0.9, 0.999)), eps=optimizer_cfg["eps"])
+    opt_kwargs = {"betas": optimizer_cfg.get("betas", (0.9, 0.999)), "eps": optimizer_cfg["eps"]}
+    if offload_cpu:
+        optimizer = DeepSpeedCPUAdam(params, **opt_kwargs)
+    else:
+        optimizer = torch.optim.AdamW(params, **opt_kwargs)
 
     return optimizer
 
@@ -189,6 +198,7 @@ def _load_config(path: str) -> dict:
 
 
 def main(config: dict, deepspeed_stage: int = 2, grad_accum_steps: int = 1):
+    parser_offload_cpu = config.get("offload_cpu", True)
     folder = config.get("folder")
     cfgs_meta = config.get("meta", {})
     cfgs_model = config.get("model", {})
@@ -442,6 +452,7 @@ def main(config: dict, deepspeed_stage: int = 2, grad_accum_steps: int = 1):
         dtype=dtype,
         stage=deepspeed_stage,
         grad_accum_steps=grad_accum_steps,
+        offload_cpu=parser_offload_cpu,
     )
 
     optimizer_cfg = {
@@ -461,7 +472,7 @@ def main(config: dict, deepspeed_stage: int = 2, grad_accum_steps: int = 1):
     optimizer = _init_optimizer(
         model=model,
         optimizer_cfg=optimizer_cfg,
-        use_mixed_precision=mixed_precision,
+        offload_cpu=parser_offload_cpu,
     )
 
     model_engine, optimizer, _, _ = deepspeed.initialize(
@@ -725,6 +736,12 @@ def parse_args():
     parser.add_argument(
         "--grad-accum-steps", type=int, default=1, help="Gradient accumulation steps for DeepSpeed."
     )
+    parser.add_argument(
+        "--offload-cpu",
+        action=argparse.BooleanOptionalAction,
+        default=True,
+        help="Offload optimizer state to CPU and use DeepSpeed CPUAdam (default: True).",
+    )
     return parser.parse_args()
 
 
@@ -737,4 +754,5 @@ if __name__ == "__main__":
 
     args = parse_args()
     cfg = _load_config(args.config)
+    cfg.setdefault("offload_cpu", args.offload_cpu)
     main(cfg, deepspeed_stage=args.deepspeed_stage, grad_accum_steps=args.grad_accum_steps)

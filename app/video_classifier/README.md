@@ -102,10 +102,12 @@ python -m app.main \
 deepspeed --num_gpus=4 app/video_classifier/deepspeed_train.py \
   --config app/video_classifier/video-classifier.yaml \
   --deepspeed-stage 2 \
-  --grad-accum-steps 1
+  --grad-accum-steps 1 \
+  --offload-cpu
 ```
 
 Notes:
 - Adjust `--grad-accum-steps` to control effective batch size (`train_batch_size = micro_batch * GPUs * grad_accum_steps`).
 - Checkpointing/logging follow the same folder paths as `train.py` (`latest.pt`, `log_r{rank}.csv`).
+- Optimizer offloading: `--offload-cpu/--no-offload-cpu` toggles CPU offload of optimizer state. When enabled (default), the entrypoint uses `DeepSpeedCPUAdam` and sets ZeRO offload to CPU. You can also set `offload_cpu: true|false` in `video-classifier.yaml`; CLI flag overrides the YAML. 
 - Pretraining/finetuning flags (e.g., `meta.pretrain_checkpoint`, `meta.finetune_encoder`) are read from the YAML. 【F:app/video_classifier/deepspeed_train.py†L191-L505】【F:app/video_classifier/deepspeed_train.py†L541-L714】
